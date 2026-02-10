@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tracked Flashcards</title>
+    <!-- Assumes data.js exists in the same folder -->
+    <script src="data.js"></script>
+    <style>
+        :root {
+            --primary: #4a90e2;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+            --bg: #f0f2f5;
+            --card-bg: #ffffff;
+            --text: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background-color: var(--bg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        h1 { margin-bottom: 20px; color: var(--text); }
+
+        /* --- FLASHCARD AREA --- */
+        .card-container {
+            perspective: 1000px;
+            width: 100%;
+            max-width: 400px;
+            height: 250px;
+            cursor: pointer;
+            margin-bottom: 20px;
+        }
+
+        .card {
+            width: 100%;
+            height: 100%;
+            background-color: var(--card-bg);
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+            position: relative;
+            transition: transform 0.2s;
+        }
+
+        .card:hover { transform: translateY(-3px); }
+
+        .icon-large { font-size: 3rem; margin-bottom: 15px; }
+        .instruction { color: #888; font-size: 0.9rem; }
+        
+        .transcription {
+            font-size: 1.4rem;
+            font-weight: bold;
+            color: var(--text);
+            display: none;
+        }
+        
+        .card.revealed .transcription { display: block; }
+        .card.revealed .instruction { display: none; }
+        .card.revealed .icon-large { display: none; }
+
+        /* --- CONTROLS --- */
+        .controls { display: flex; gap: 10px; margin-bottom: 30px; flex-wrap: wrap; justify-content: center; }
+
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: 0.2s;
+            color: white;
+            background: var(--primary);
+            font-weight: 500;
+        }
+
+        button:hover { filter: brightness(1.1); }
+        button:active { transform: scale(0.98); }
+
+        button.secondary { background: #95a5a6; }
+        
+        button.mark-done { 
+            background: var(--success); 
+            display: flex; 
+            align-items: center; 
+            gap: 5px; 
+        }
+
+        /* --- NAVIGATION GRID --- */
+        .nav-section {
+            width: 100%;
+            max-width: 600px;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .nav-header {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+            gap: 8px;
+        }
+
+        .grid-item {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #f0f2f5;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            transition: 0.2s;
+            border: 2px solid transparent;
+        }
+
+        .grid-item:hover { background: #e2e6ea; }
+
+        /* Grid Item States */
+        .grid-item.active {
+            border-color: var(--primary);
+            color: var(--primary);
+            background: white;
+        }
+
+        .grid-item.completed {
+            background: var(--success);
+            color: white;
+        }
+
+        .grid-item.completed.active {
+            background: var(--success);
+            border-color: #27ae60;
+            box-shadow: 0 0 0 2px white inset;
+        }
+
+        /* --- UTILITY BUTTONS --- */
+        .reset-btn {
+            background: transparent;
+            color: var(--danger);
+            border: 1px solid var(--danger);
+            padding: 5px 10px;
+            font-size: 0.8rem;
+        }
+        .reset-btn:hover {
+            background: var(--danger);
+            color: white;
+        }
+
+    </style>
+</head>
+<body>
+
+    <h1>Audio Flashcards</h1>
+
+    <div class="card-container" id="flashcard">
+        <div class="card" id="cardInner">
+            <div class="icon-large">🎧</div>
+            <div class="instruction">Click to reveal answer</div>
+            <div class="transcription" id="cardText">...</div>
+        </div>
+    </div>
+
+    <!-- Hidden Audio Player -->
+    <audio id="audioPlayer"></audio>
+
+    <div class="controls">
+        <button class="secondary" onclick="replayAudio()">Replay ↺</button>
+        <button onclick="toggleComplete()" class="mark-done" id="btnComplete">Mark Complete ✓</button>
+        <button onclick="pickRandom()">Random 🔀</button>
+    </div>
+
+    <div class="nav-section">
+        <div class="nav-header">
+            <span id="progressText">0 / 0 Completed</span>
+            <button class="reset-btn" onclick="resetProgress()">Reset Progress</button>
+        </div>
+        <div class="grid" id="navGrid">
+            <!-- Grid items generated by JS -->
+        </div>
+    </div>
+
+    <script>
+        // --- DATA CHECK ---
+        // Use a safe local variable 'cardData' to avoid conflicts with const FLASHCARD_DATA
+        let cardData = [];
+
+        if (typeof FLASHCARD_DATA !== 'undefined') {
+            cardData = FLASHCARD_DATA;
+        } else {
+            alert("Error: data.js not found. Please run the Python script first!");
+            // Mock data so the UI doesn't crash if opened without python script
+            cardData = [{text: "Example Card", lang: "en", audio_src: ""}];
+        }
+
+        // --- STATE MANAGEMENT ---
+        let currentIndex = 0;
+        
+        // Load completed IDs from localStorage
+        let completedSet = new Set(JSON.parse(localStorage.getItem('completedCards')) || []);
+
+        // --- DOM ELEMENTS ---
+        const cardElement = document.getElementById('cardInner');
+        const textElement = document.getElementById('cardText');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const navGrid = document.getElementById('navGrid');
+        const btnComplete = document.getElementById('btnComplete');
+        const progressText = document.getElementById('progressText');
+
+        // --- INITIALIZATION ---
+        function init() {
+            renderGrid();
+            loadCard(0);
+        }
+
+        // --- CORE LOGIC ---
+
+        function loadCard(index) {
+            currentIndex = index;
+            const data = cardData[index];
+
+            // Reset Card UI
+            cardElement.classList.remove('revealed');
+            
+            // Set Text
+            textElement.innerText = data.text;
+
+            // Play Audio
+            if(data.audio_src) {
+                audioPlayer.src = data.audio_src;
+                audioPlayer.play().catch(e => console.log("Autoplay blocked (interaction required)"));
+            }
+
+            updateUI();
+        }
+
+        function pickRandom() {
+            // Optional: Pick a random card that ISN'T completed yet
+            const uncompleted = cardData
+                .map((_, idx) => idx)
+                .filter(idx => !completedSet.has(idx));
+
+            if (uncompleted.length > 0) {
+                const randomIdx = uncompleted[Math.floor(Math.random() * uncompleted.length)];
+                loadCard(randomIdx);
+            } else {
+                // If all done, just pick purely random
+                const randomIdx = Math.floor(Math.random() * cardData.length);
+                loadCard(randomIdx);
+            }
+        }
+
+        function toggleComplete(e) {
+            if(e) e.stopPropagation();
+
+            if (completedSet.has(currentIndex)) {
+                completedSet.delete(currentIndex);
+            } else {
+                completedSet.add(currentIndex);
+            }
+            
+            saveProgress();
+            updateUI();
+        }
+
+        function resetProgress() {
+            if(confirm("Are you sure you want to reset all progress? This cannot be undone.")) {
+                completedSet.clear();
+                saveProgress();
+                updateUI();
+                // Optionally reload current card to refresh its button state
+                loadCard(currentIndex); 
+            }
+        }
+
+        function replayAudio() {
+            if (audioPlayer.src) {
+                audioPlayer.currentTime = 0;
+                audioPlayer.play();
+            }
+        }
+
+        function saveProgress() {
+            localStorage.setItem('completedCards', JSON.stringify([...completedSet]));
+        }
+
+        // --- UI UPDATES ---
+
+        function updateUI() {
+            // Update Button Text/Style
+            if (completedSet.has(currentIndex)) {
+                btnComplete.innerText = "Completed ✓";
+                btnComplete.style.opacity = "0.6";
+            } else {
+                btnComplete.innerText = "Mark Complete";
+                btnComplete.style.opacity = "1";
+            }
+
+            // Update Header Text
+            progressText.innerText = `${completedSet.size} / ${cardData.length} Completed`;
+
+            // Re-render grid to show active/completed states
+            renderGrid();
+        }
+
+        function renderGrid() {
+            navGrid.innerHTML = '';
+            
+            cardData.forEach((item, index) => {
+                const btn = document.createElement('div');
+                btn.className = 'grid-item';
+                btn.innerText = index + 1;
+                
+                // Add classes based on state
+                if (completedSet.has(index)) btn.classList.add('completed');
+                if (index === currentIndex) btn.classList.add('active');
+
+                btn.onclick = () => loadCard(index);
+
+                navGrid.appendChild(btn);
+            });
+        }
+
+        // --- EVENTS ---
+        document.getElementById('flashcard').addEventListener('click', () => {
+            cardElement.classList.toggle('revealed');
+        });
+
+        window.onload = init;
+
+    </script>
+</body>
+</html>
